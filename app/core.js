@@ -31,7 +31,16 @@ function announceRepaint(path) {
 }
 
 async function fetchJson(path) {
-  const res = await fetch(`${API_ROOT}${path}`, { headers: { accept: 'application/json' } });
+  let res;
+  try {
+    res = await fetch(`${API_ROOT}${path}`, {
+      headers: { accept: 'application/json' },
+      signal: AbortSignal.timeout(12_000),
+    });
+  } catch (err) {
+    if (err && err.name === 'TimeoutError') throw new Error(`make.fun API did not answer in time for ${path}`);
+    throw err;
+  }
   if (!res.ok) {
     const err = new Error(`make.fun API answered ${res.status} for ${path}`);
     err.status = res.status;

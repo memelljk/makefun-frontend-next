@@ -47,20 +47,24 @@ function sameBytes(a, b) {
   return true;
 }
 
-// Mirror a directory tree one file at a time. The walk is deliberate:
-// anything in the source that is neither a plain file nor a directory
-// (a symlink, a socket, a device) stops the hand-in instead of being
-// silently carried along.
+// Mirror a directory tree one file at a time, returning how many
+// files were copied. The walk is deliberate: anything in the source
+// that is neither a plain file nor a directory (a symlink, a socket,
+// a device) stops the hand-in instead of being silently carried along.
 function mirrorTree(fromDir, toDir) {
   mkdirSync(toDir, { recursive: true });
+  let copied = 0;
   for (const name of readdirSync(fromDir)) {
     const src = join(fromDir, name);
     const dst = join(toDir, name);
     const info = statSync(src);
-    if (info.isDirectory()) mirrorTree(src, dst);
-    else if (info.isFile()) copyFileSync(src, dst);
-    else halt(`${src} is neither a file nor a directory`);
+    if (info.isDirectory()) copied += mirrorTree(src, dst);
+    else if (info.isFile()) {
+      copyFileSync(src, dst);
+      copied += 1;
+    } else halt(`${src} is neither a file nor a directory`);
   }
+  return copied;
 }
 
 // Image dimensions read from the image bytes alone. A PNG stores its
@@ -112,6 +116,11 @@ function prepare() {
   if (outDir === repoRoot) halt('the output directory must not be the repository itself');
   console.log(`Preparing hand-in: ${repoRoot} -> ${outDir}`);
 
+  const appSource = join(repoRoot, 'app');
+  const shotsSource = join(repoRoot, 'screenshots');
+  if (!existsSync(appSource)) halt('app/ is missing from the repository');
+  if (!existsSync(shotsSource)) halt('screenshots/ is missing from the repository');
+
   // Empty the output directory entry by entry. The directory itself
   // stays: in the grading sandbox it is a mount point, and removing
   // it is exactly the failure this ordering avoids.
@@ -120,8 +129,8 @@ function prepare() {
     rmSync(join(outDir, name), { recursive: true, force: true });
   }
 
-  mirrorTree(join(repoRoot, 'app'), join(outDir, 'app'));
-  mirrorTree(join(repoRoot, 'screenshots'), join(outDir, 'screenshots'));
+  const mirrored = mirrorTree(appSource, join(outDir, 'app')) + mirrorTree(shotsSource, join(outDir, 'screenshots'));
+  console.log(`Mirrored ${mirrored} files into the output`);
 
   for (const name of MUST_ARRIVE) {
     if (!existsSync(join(outDir, 'app', name))) halt(`app/${name} did not arrive in the output`);
